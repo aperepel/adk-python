@@ -239,6 +239,7 @@ class AdkWebServer:
       eval_sets_manager: EvalSetsManager,
       eval_set_results_manager: EvalSetResultsManager,
       agents_dir: str,
+      initial_session_state: Optional[dict[str, Any]] = None,
   ):
     self.agent_loader = agent_loader
     self.session_service = session_service
@@ -251,6 +252,7 @@ class AdkWebServer:
     # Internal propeties we want to allow being modified from callbacks.
     self.runners_to_clean: set[str] = set()
     self.current_app_name_ref: SharedValue[str] = SharedValue(value="")
+    self.initial_session_state = initial_session_state or {}
     self.runner_dict = {}
 
   async def get_runner_async(self, app_name: str) -> Runner:
@@ -429,8 +431,14 @@ class AdkWebServer:
         raise HTTPException(
             status_code=400, detail=f"Session already exists: {session_id}"
         )
+      merged_state = self.initial_session_state.copy()
+      if state:
+        merged_state.update(state)
       session = await self.session_service.create_session(
-          app_name=app_name, user_id=user_id, state=state, session_id=session_id
+          app_name=app_name,
+          user_id=user_id,
+          state=merged_state,
+          session_id=session_id,
       )
       logger.info("New session created: %s", session_id)
       return session
@@ -445,8 +453,11 @@ class AdkWebServer:
         state: Optional[dict[str, Any]] = None,
         events: Optional[list[Event]] = None,
     ) -> Session:
+      merged_state = self.initial_session_state.copy()
+      if state:
+        merged_state.update(state)
       session = await self.session_service.create_session(
-          app_name=app_name, user_id=user_id, state=state
+          app_name=app_name, user_id=user_id, state=merged_state
       )
 
       if events:
