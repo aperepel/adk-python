@@ -14,15 +14,21 @@
 
 from __future__ import annotations
 
+import copy
 from types import MappingProxyType
 from typing import Any
+from typing import List
 from typing import Optional
 from typing import TYPE_CHECKING
+from typing import TypeVar
 
 if TYPE_CHECKING:
   from google.genai import types
 
   from .invocation_context import InvocationContext
+
+
+Event = TypeVar('Event')
 
 
 class ReadonlyContext:
@@ -52,3 +58,8 @@ class ReadonlyContext:
   def state(self) -> MappingProxyType[str, Any]:
     """The state of the current session. READONLY field."""
     return MappingProxyType(self._invocation_context.session.state)
+
+  @property
+  def events(self) -> List[Event]:
+    """Historical events from the current session."""
+    return copy.deepcopy(self._invocation_context.session.events)

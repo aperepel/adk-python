@@ -46,11 +46,19 @@ class AgentTool(BaseTool):
   Attributes:
     agent: The agent to wrap.
     skip_summarization: Whether to skip summarization of the agent output.
+    include_conversational_context: Whether to pass conversation history through
+      to the sub-agent.
   """
 
-  def __init__(self, agent: BaseAgent, skip_summarization: bool = False):
+  def __init__(
+      self,
+      agent: BaseAgent,
+      skip_summarization: bool = False,
+      include_conversational_context: bool = False,
+  ):
     self.agent = agent
-    self.skip_summarization: bool = skip_summarization
+    self.skip_summarization = skip_summarization
+    self.include_conversational_context = include_conversational_context
 
     super().__init__(name=agent.name, description=agent.description)
 
@@ -139,6 +147,10 @@ class AgentTool(BaseTool):
         user_id='tmp_user',
         state=tool_context.state.to_dict(),
     )
+
+    if self.include_conversational_context:
+      for event in tool_context.events[:-1]:
+        await runner.session_service.append_event(session, event)
 
     last_event = None
     async for event in runner.run_async(
