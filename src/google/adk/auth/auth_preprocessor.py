@@ -44,7 +44,7 @@ class _AuthLlmRequestProcessor(BaseLlmRequestProcessor):
     from ..agents.llm_agent import LlmAgent
 
     agent = invocation_context.agent
-    if not isinstance(agent, LlmAgent):
+    if not hasattr(agent, 'canonical_tools'):
       return
     events = invocation_context.session.events
     if not events:
@@ -110,7 +110,7 @@ class _AuthLlmRequestProcessor(BaseLlmRequestProcessor):
               event,
               {
                   tool.name: tool
-                  for tool in await agent.canonical_tools(
+                  for tool in await getattr(agent, 'canonical_tools')(
                       ReadonlyContext(invocation_context)
                   )
               },

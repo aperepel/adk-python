@@ -33,6 +33,9 @@ from .functions import REQUEST_EUC_FUNCTION_CALL_NAME
 class _ContentLlmRequestProcessor(BaseLlmRequestProcessor):
   """Builds the contents for the LLM request."""
 
+  def __init__(self, mutating: bool):
+    self.mutating = mutating
+
   @override
   async def run_async(
       self, invocation_context: InvocationContext, llm_request: LlmRequest
@@ -40,15 +43,14 @@ class _ContentLlmRequestProcessor(BaseLlmRequestProcessor):
     from ...agents.llm_agent import LlmAgent
 
     agent = invocation_context.agent
-    if not isinstance(agent, LlmAgent):
-      return
 
-    if agent.include_contents == 'default':
+    if not isinstance(agent, LlmAgent) or agent.include_contents == 'default':
       # Include full conversation history
       llm_request.contents = _get_contents(
           invocation_context.branch,
           invocation_context.session.events,
           agent.name,
+          self.mutating,
       )
     else:
       # Include current turn context only (no conversation history)
@@ -63,7 +65,8 @@ class _ContentLlmRequestProcessor(BaseLlmRequestProcessor):
       yield  # This is a no-op but maintains generator structure
 
 
-request_processor = _ContentLlmRequestProcessor()
+request_processor = _ContentLlmRequestProcessor(mutating=True)
+non_mutating_request_processor = _ContentLlmRequestProcessor(mutating=False)
 
 
 def _rearrange_events_for_async_function_responses_in_history(
@@ -203,7 +206,10 @@ def _rearrange_events_for_latest_function_response(
 
 
 def _get_contents(
-    current_branch: Optional[str], events: list[Event], agent_name: str = ''
+    current_branch: Optional[str],
+    events: list[Event],
+    agent_name: str = '',
+    mutating: bool = True,
 ) -> list[types.Content]:
   """Get the contents for the LLM request.
 
@@ -213,6 +219,7 @@ def _get_contents(
     current_branch: The current branch of the agent.
     events: Events to process.
     agent_name: The name of the agent.
+    mutating: Whether to rewrite all conversation turns as user verbalizations.
 
   Returns:
     A list of processed contents.
@@ -240,7 +247,7 @@ def _get_contents(
       continue
     filtered_events.append(
         _convert_foreign_event(event)
-        if _is_other_agent_reply(agent_name, event)
+        if mutating and _is_other_agent_reply(agent_name, event)
         else event
     )
 
@@ -313,7 +320,6 @@ def _convert_foreign_event(event: Event) -> Event:
 
   Returns:
     The converted event.
-
   """
   if not event.content or not event.content.parts:
     return event

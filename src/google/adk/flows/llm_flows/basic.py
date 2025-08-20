@@ -17,7 +17,6 @@
 from __future__ import annotations
 
 from typing import AsyncGenerator
-from typing import Generator
 
 from google.genai import types
 from typing_extensions import override
@@ -36,26 +35,7 @@ class _BasicLlmRequestProcessor(BaseLlmRequestProcessor):
   ) -> AsyncGenerator[Event, None]:
     from ...agents.llm_agent import LlmAgent
 
-    agent = invocation_context.agent
-    if not isinstance(agent, LlmAgent):
-      return
-
-    llm_request.model = (
-        agent.canonical_model
-        if isinstance(agent.canonical_model, str)
-        else agent.canonical_model.model
-    )
-    llm_request.config = (
-        agent.generate_content_config.model_copy(deep=True)
-        if agent.generate_content_config
-        else types.GenerateContentConfig()
-    )
-    # Only set output_schema if no tools are specified. as of now, model don't
-    # support output_schema and tools together. we have a workaround to support
-    # both outoput_schema and tools at the same time. see
-    # _output_schema_processor.py for details
-    if agent.output_schema and not agent.tools:
-      llm_request.set_output_schema(agent.output_schema)
+    llm_request.config = types.GenerateContentConfig()
 
     llm_request.live_connect_config.response_modalities = (
         invocation_context.run_config.response_modalities
@@ -81,6 +61,23 @@ class _BasicLlmRequestProcessor(BaseLlmRequestProcessor):
     llm_request.live_connect_config.session_resumption = (
         invocation_context.run_config.session_resumption
     )
+    agent = invocation_context.agent
+    if not isinstance(agent, LlmAgent):
+      return
+
+    llm_request.model = (
+        agent.canonical_model
+        if isinstance(agent.canonical_model, str)
+        else agent.canonical_model.model
+    )
+    # Only set output_schema if no tools are specified. as of now, model don't
+    # support output_schema and tools together. we have a workaround to support
+    # both outoput_schema and tools at the same time. see
+    # _output_schema_processor.py for details
+    if agent.output_schema and not agent.tools:
+      llm_request.set_output_schema(agent.output_schema)
+    if agent.generate_content_config:
+      llm_request.config = agent.generate_content_config.model_copy(deep=True)
 
     # TODO: handle tool append here, instead of in BaseTool.process_llm_request.
 

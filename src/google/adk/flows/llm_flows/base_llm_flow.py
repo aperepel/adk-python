@@ -401,16 +401,18 @@ class BaseLlmFlow(ABC):
     from ...agents.llm_agent import LlmAgent
 
     agent = invocation_context.agent
-    if not isinstance(agent, LlmAgent):
-      return
 
     # Runs processors.
     for processor in self.request_processors:
+      logging.debug('Running processor: %s', type(processor).__name__)
       async with Aclosing(
           processor.run_async(invocation_context, llm_request)
       ) as agen:
         async for event in agen:
           yield event
+
+    if not isinstance(agent, LlmAgent):
+      return
 
     # Run processors for tools.
     for tool_union in agent.tools:
