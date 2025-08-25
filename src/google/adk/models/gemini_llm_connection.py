@@ -172,14 +172,6 @@ class GeminiLlmConnection(BaseLlmConnection):
               message.server_content.output_transcription
               and message.server_content.output_transcription.text
           ):
-            # TODO: Right now, we just support output_transcription without
-            # changing interface and data protocol. Later, we can consider to
-            # support output_transcription as a separate field in LlmResponse.
-
-            # Transcription is always considered as partial event
-            # We rely on other control signals to determine when to yield the
-            # full text response(turn_complete, interrupted, or tool_call).
-            text += message.server_content.output_transcription.text
             llm_response = LlmResponse(
                 output_transcription=message.server_content.output_transcription
             )

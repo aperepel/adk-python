@@ -82,6 +82,12 @@ class RunConfig(BaseModel):
   session_resumption: Optional[types.SessionResumptionConfig] = None
   """Configures session resumption mechanism. Only support transparent session resumption mode now."""
 
+  enable_saving_live_blob: bool = False
+  """Saves live video and audio data to session and artifact service.
+
+  Right now, only audio is supported.
+  """
+
   max_llm_calls: int = 500
   """
   A limit on the total number of llm calls for a given run.

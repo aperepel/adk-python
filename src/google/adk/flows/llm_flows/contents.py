@@ -203,7 +203,7 @@ def _rearrange_events_for_latest_function_response(
 
 
 def _get_contents(
-    current_branch: Optional[str], events: list[Event], agent_name: str = ''
+    current_branch: Optional[str], raw_events: list[Event], agent_name: str = ''
 ) -> list[types.Content]:
   """Get the contents for the LLM request.
 
@@ -220,7 +220,12 @@ def _get_contents(
   filtered_events = []
   # Parse the events, leaving the contents and the function calls and
   # responses from the current agent.
-  for event in events:
+  accumulated_input_transcription = ''
+  accumulated_output_transcription = ''
+
+  # fitler out unwanted events so we can concatenate transcription more easily
+  raw_filtered_events = []
+  for event in raw_events:
     if (
         not event.content
         or not event.content.role
@@ -230,14 +235,53 @@ def _get_contents(
       # Skip events without content, or generated neither by user nor by model
       # or has empty text.
       # E.g. events purely for mutating session states.
-
-      continue
+      if not event.output_transcription and not event.input_transcription:
+        continue
     if not _is_event_belongs_to_branch(current_branch, event):
       # Skip events not belong to current branch.
       continue
     if _is_auth_event(event):
       # Skip auth events.
       continue
+    if _is_live_model_audio_event(event):
+      continue
+    raw_filtered_events.append(event)
+
+  events = raw_filtered_events
+  for i in range(len(events)):
+    event = events[i]
+    if not event.content:
+      # Convert transcription into normal event
+      if event.input_transcription and event.input_transcription.text:
+        accumulated_input_transcription += event.input_transcription.text
+        if (
+            i != len(events) - 1
+            and events[i + 1].input_transcription
+            and events[i + 1].input_transcription.text
+        ):
+          continue
+        event = event.model_copy(deep=True)
+        event.input_transcription = None
+        event.content = types.Content(
+            role='user',
+            parts=[types.Part(text=accumulated_input_transcription)],
+        )
+        accumulated_input_transcription = ''
+      elif event.output_transcription and event.output_transcription.text:
+        accumulated_output_transcription += event.output_transcription.text
+        if (
+            i != len(events) - 1
+            and events[i + 1].output_transcription
+            and events[i + 1].output_transcription.text
+        ):
+          continue
+        event = event.model_copy(deep=True)
+        event.output_transcription = None
+        event.content = types.Content(
+            role='model',
+            parts=[types.Part(text=accumulated_output_transcription)],
+        )
+        accumulated_output_transcription = ''
     filtered_events.append(
         _convert_foreign_event(event)
         if _is_other_agent_reply(agent_name, event)
@@ -432,6 +476,8 @@ def _is_event_belongs_to_branch(
 
 
 def _is_auth_event(event: Event) -> bool:
+  if not event.content:
+    return False
   if not event.content.parts:
     return False
   for part in event.content.parts:
@@ -444,5 +490,45 @@ def _is_auth_event(event: Event) -> bool:
         part.function_response
         and part.function_response.name == REQUEST_EUC_FUNCTION_CALL_NAME
     ):
+      return True
+  return False
+
+
+def _is_live_model_audio_event(event: Event) -> bool:
+  """Check if the event is an audio event produced by live/bidi models
+
+  There are two possible cases:
+  content=Content(
+    parts=[
+      Part(
+        file_data=FileData(
+          file_uri='artifact://live_bidi_streaming_multi_agent/user/cccf0b8b-4a30-449a-890e-e8b8deb661a1/_adk_live/adk_live_audio_storage_input_audio_1756092402277.pcm#1',
+          mime_type='audio/pcm'
+        )
+      ),
+    ],
+    role='user'
+  )
+  content=Content(
+    parts=[
+      Part(
+        inline_data=Blob(
+          data=b'\x01\x00\x00...',
+          mime_type='audio/pcm'
+        )
+      ),
+    ],
+    role='model'
+  ) grounding_metadata=None partial=None turn_complete=None finish_reason=None error_code=None error_message=None ...
+  """
+  if not event.content:
+    return False
+  if not event.content.parts:
+    return False
+  # If it's audio data, then one event only has one part of audio.
+  for part in event.content.parts:
+    if part.inline_data and part.inline_data.mime_type == 'audio/pcm':
+      return True
+    if part.file_data and part.file_data.mime_type == 'audio/pcm':
       return True
   return False
